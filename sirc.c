@@ -18,8 +18,7 @@ typedef enum token_t {
 	SIRC_TOKEN_START,
 	SIRC_TOKEN_LONG,
 	SIRC_TOKEN_SHORT,
-	SIRC_TOKEN_SEPARATOR,
-	SIRC_TOKEN_SILENCE
+	SIRC_TOKEN_SEPARATOR
 } token_t;
 
 typedef struct token_specs_t {
@@ -91,11 +90,7 @@ sirc_set_on_message(void (*fn)(message_t)) {
 void
 sirc_edge(uint16_t ticks) {
 	static uint16_t prev_ticks = 0;
-	// uint16_t delta_ticks = ticks - prev_ticks;
 	uint16_t delta_ticks = (ticks > prev_ticks) ? (ticks - prev_ticks) : ((0xFFFF - prev_ticks) + ticks);
-
-	/* XXX */
-	
 	token_t token = _sirc_tokenize(delta_ticks);
 	if (_state == SIRC_STATE_NONE) {
 		if (token == SIRC_TOKEN_START) {

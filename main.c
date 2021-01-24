@@ -10,7 +10,6 @@
 #include <stddef.h> /* NULL */
 #include <avr/cpufunc.h> /* _NOP() */
 #include <avr/io.h>
-//#include <util/delay.h>
 #include <avr/interrupt.h>
 #include <avr/eeprom.h>
 
@@ -86,6 +85,7 @@ int main(void)
 				/* make sure we don't just read a repeated green code */
 				message_t green = read_green_message();
 				while (1) {
+
 					/* wait until there is something in the buffer */
 					while (buffer_is_empty(msgbuf));
 
@@ -100,7 +100,7 @@ int main(void)
 					   ignore any events in order to flush out
 					   any remaining IR codes
 					 */
-					mode_pause(30);
+					mode_pause(20);
 					break;
 				}
 			}
