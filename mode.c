@@ -21,7 +21,7 @@ mode_tick() {
 		_pause_ticks -= 1;
 		return;
 	}
-	
+
 	if (prescale2 == 0) {
 		prescale2 = 0x06;
 

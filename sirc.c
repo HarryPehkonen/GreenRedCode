@@ -11,7 +11,6 @@
 #include <avr/cpufunc.h> /* _NOP() */
 #include <string.h> /* memset */
 #include "sirc.h"
-#include "util.h"
 
 typedef enum token_t {
 	SIRC_TOKEN_UNKNOWN,
@@ -75,16 +74,18 @@ typedef enum state_t {
 	SIRC_STATE_NEED_SHORT = 3
 } state_t;
 
-/* _message and _mask must be the same type */
-static message_t _message = 0;
-static message_t _mask = 0;
+/* must be the same type */
+sirc_code_t _code = 0;
+sirc_code_t _mask = 0;
+sirc_code_t _prev_code = 0;
+sirc_code_t _code_length = 0;
 
 static state_t _state = SIRC_STATE_NONE;
-void (*on_message)(message_t);
+void (*on_code)(sirc_code_t);
 
 void
-sirc_set_on_message(void (*fn)(message_t)) {
-	on_message = fn;
+sirc_set_on_code(void (*fn)(sirc_code_t)) {
+	on_code = fn;
 }
 
 void
@@ -99,12 +100,14 @@ sirc_edge(uint16_t ticks) {
 	} else if (_state == SIRC_STATE_NEED_START_SHORT) {
 		if (token == SIRC_TOKEN_SHORT) {
 			_state = SIRC_STATE_HAVE_START;
-			_message = 0;
+			_code = 0;
+			_code_length = 0;
 			_mask = 1;
 		} else {
-			
+
 			/* bombed */
 			_state = SIRC_STATE_NONE;
+			_prev_code = 0;
 		}
 	} else if (_state == SIRC_STATE_HAVE_START) {
 		if (token == SIRC_TOKEN_SHORT) {
@@ -112,46 +115,65 @@ sirc_edge(uint16_t ticks) {
 			_mask <<= 1;
 		} else if (token == SIRC_TOKEN_LONG) {
 			_state = SIRC_STATE_NEED_SHORT;
-			_message |= _mask;
+			_code |= _mask;
 			_mask <<= 1;
-		} else {
-			
-			/* bombed */
-			_state = SIRC_STATE_NONE;
-		}
-		
-	} else if (_state == SIRC_STATE_NEED_SHORT) {
-		if (token == SIRC_TOKEN_SHORT) {
-			_state = SIRC_STATE_HAVE_START;
-		} else if (token == SIRC_TOKEN_SEPARATOR) {
-			
-			/* callback */
-			_state = SIRC_STATE_NONE;
-			on_message(_message);
 		} else {
 
 			/* bombed */
 			_state = SIRC_STATE_NONE;
+			_prev_code = 0;
+		}
+
+	} else if (_state == SIRC_STATE_NEED_SHORT) {
+		if (token == SIRC_TOKEN_SHORT) {
+			_state = SIRC_STATE_HAVE_START;
+			_code_length += 1;
+		} else if (token == SIRC_TOKEN_SEPARATOR) {
+
+			if (_code != _prev_code) {
+
+				/* previous pulse matters */
+				_code_length += 1;
+
+				/* add code length to end */
+				/* see .h for meaning */
+				_code_length <<= ((sizeof(sirc_code_t) * 8) - 5);
+				_code |= _code_length;
+
+				_state = SIRC_STATE_NONE;
+
+				/* callback */
+				on_code(_code);
+
+				_prev_code = _code;
+			}
+		} else {
+
+			/* bombed */
+			_state = SIRC_STATE_NONE;
+			_prev_code = 0;
 		}
 	}
 
 	prev_ticks = ticks;
 }
 
+#ifdef DEBUG
 static uint8_t _tokenizer_worked = 0;
-void _tokenizer_works(message_t message) {
-	if (message == 0x96) {
+void
+_tokenizer_works(sirc_code_t code) {
+	if ((SIRC_GET_CODE(code) == 0x96) && (SIRC_GET_LENGTH(code) == 12)) {
 		_tokenizer_worked = 0xff;
 	}
 }
 
-void _poweroff_works(message_t message) {
-	if (message == 0x95) {
+void
+_poweroff_works(sirc_code_t code) {
+	if ((SIRC_GET_CODE(code) == 0x95) && (SIRC_GET_LENGTH(code) == 12)) {
 		_tokenizer_worked = 0xff;
 	}
 }
 
-uint16_t loop;
 void
 sirc_test() {
 
@@ -177,7 +199,7 @@ sirc_test() {
 	if(_sirc_tokenize(SIRC_TOKEN_SEPARATOR_MAX + 1) != SIRC_TOKEN_UNKNOWN) while(1);
 
 	/* test sirc_edge */
-	sirc_set_on_message(_tokenizer_works);
+	sirc_set_on_code(_tokenizer_works);
 
 	uint16_t ticks = 0;
 
@@ -229,17 +251,32 @@ sirc_test() {
 	ticks += SIRC_TOKEN_SHORT_MIN;
 	sirc_edge(ticks);
 
-	/* stop burst */
+	ticks += SIRC_TOKEN_SHORT_MIN;
+	sirc_edge(ticks);
 	ticks += SIRC_TOKEN_SHORT_MIN;
 	sirc_edge(ticks);
 
+	ticks += SIRC_TOKEN_SHORT_MIN;
+	sirc_edge(ticks);
+	ticks += SIRC_TOKEN_SHORT_MIN;
+	sirc_edge(ticks);
+
+	ticks += SIRC_TOKEN_SHORT_MIN;
+	sirc_edge(ticks);
+	ticks += SIRC_TOKEN_SHORT_MIN;
+	sirc_edge(ticks);
+
+	ticks += SIRC_TOKEN_SHORT_MIN;
+	sirc_edge(ticks);
+
+	/* stop burst */
 	ticks += SIRC_TOKEN_SEPARATOR_MIN;
 	sirc_edge(ticks);
 
 	if (_tokenizer_worked == 0) while(1);
 
 	/* XXX:  fragile test -- requires 1/64 prescaler and 8MHz */
-	sirc_set_on_message(_poweroff_works);
+	sirc_set_on_code(_poweroff_works);
 	_tokenizer_worked = 0;
 	ticks = 0;
 	sirc_edge(ticks);
@@ -278,6 +315,7 @@ sirc_test() {
 	if (_tokenizer_worked == 0) while(1);
 
 	/* remove test callback */
-	sirc_set_on_message(NULL);
+	sirc_set_on_code(NULL);
 
 }
+#endif /* DEBUG */

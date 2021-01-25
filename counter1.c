@@ -13,9 +13,9 @@ counter1_init() {
 
 	/* input capture */
 	TIMSK1 |= (1<<ICIE1);
-	
+
 	/* normal mode; pins normal mode */
-	
+
 	/* prescaler */
 	TCCR1B |= (3<<CS10);
 }

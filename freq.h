@@ -14,4 +14,6 @@
 #define GREEN_EEPROM_ADDR 0
 #define RED_EEPROM_ADDR 4
 
+#define US_TO_TICKS(us) ((us) * (F_CPU / 1000000UL) / PRESCALE)
+
 #endif /* FREQ_H_ */

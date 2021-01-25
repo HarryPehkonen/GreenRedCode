@@ -13,10 +13,10 @@ void
 counter0_init() {
 	/* CTC mode */
 	TCCR0A |= (2<<WGM00);
-	
+
 	/* prescaler */
 	TCCR0B |= (5<<CS00);
-	
+
 	/* enable interrupt */
 	TIMSK0 |= (1<<OCIE0A);
 }
