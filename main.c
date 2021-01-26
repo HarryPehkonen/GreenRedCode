@@ -5,7 +5,6 @@
  * Author : harry
  */ 
 
-#include "freq.h"
 
 #include <stddef.h> /* NULL */
 #include <avr/cpufunc.h> /* _NOP() */
@@ -13,6 +12,7 @@
 #include <avr/interrupt.h>
 #include <avr/eeprom.h>
 
+#include "freq.h"
 #include "counter0.h"
 #include "counter1.h"
 #include "pins.h"

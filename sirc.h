@@ -20,7 +20,8 @@ typedef uint32_t sirc_code_t;
 #define SIRC_CODE_MASK   0b00000111111111111111111111111111
 #define SIRC_LENGTH_MASK (~(SIRC_CODE_MASK))
 #define SIRC_GET_CODE(c) ((c) & SIRC_CODE_MASK)
-#define SIRC_GET_LENGTH(c) ((c) >> ((sizeof(sirc_code_t) * 8) - 5))
+#define SIRC_LENGTH_SHIFT_AMOUNT ((sizeof(sirc_code_t) * 8) - 5)
+#define SIRC_GET_LENGTH(c) ((c) >> SIRC_LENGTH_SHIFT_AMOUNT)
 
 void sirc_edge(uint16_t ticks);
 void sirc_set_on_code(void (*fn)(sirc_code_t));

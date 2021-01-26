@@ -5,8 +5,8 @@
  *  Author: harry
  */ 
 
-#include "freq.h"
 #include <avr/io.h>
+#include "freq.h"
 #include "counter0.h"
 
 void

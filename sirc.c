@@ -5,11 +5,9 @@
  *  Author: harry
  */ 
 
-#include "freq.h"
 #include <avr/io.h>
+#include "freq.h"
 #include <stddef.h> /* NULL */
-#include <avr/cpufunc.h> /* _NOP() */
-#include <string.h> /* memset */
 #include "sirc.h"
 
 typedef enum token_t {
@@ -96,6 +94,14 @@ sirc_edge(uint16_t ticks) {
 	if (_state == SIRC_STATE_NONE) {
 		if (token == SIRC_TOKEN_START) {
 			_state = SIRC_STATE_NEED_START_SHORT;
+		} else if (token == SIRC_TOKEN_UNKNOWN) {
+
+			/*
+			 * suspect we received a very long pause in between pulses. that
+			 * means the next code should not be considered a repeat, even if
+			 * it's the same one as before.
+			 */
+			 _prev_code = 0;
 		}
 	} else if (_state == SIRC_STATE_NEED_START_SHORT) {
 		if (token == SIRC_TOKEN_SHORT) {
@@ -107,7 +113,6 @@ sirc_edge(uint16_t ticks) {
 
 			/* bombed */
 			_state = SIRC_STATE_NONE;
-			_prev_code = 0;
 		}
 	} else if (_state == SIRC_STATE_HAVE_START) {
 		if (token == SIRC_TOKEN_SHORT) {
@@ -121,7 +126,6 @@ sirc_edge(uint16_t ticks) {
 
 			/* bombed */
 			_state = SIRC_STATE_NONE;
-			_prev_code = 0;
 		}
 
 	} else if (_state == SIRC_STATE_NEED_SHORT) {
@@ -132,26 +136,26 @@ sirc_edge(uint16_t ticks) {
 
 			if (_code != _prev_code) {
 
+				/* remember code *before* adding length to it */
+				_prev_code = _code;
+
 				/* previous pulse matters */
 				_code_length += 1;
 
 				/* add code length to end */
 				/* see .h for meaning */
-				_code_length <<= ((sizeof(sirc_code_t) * 8) - 5);
+				_code_length <<= SIRC_LENGTH_SHIFT_AMOUNT;
 				_code |= _code_length;
 
 				_state = SIRC_STATE_NONE;
 
 				/* callback */
 				on_code(_code);
-
-				_prev_code = _code;
 			}
 		} else {
 
 			/* bombed */
 			_state = SIRC_STATE_NONE;
-			_prev_code = 0;
 		}
 	}
 
