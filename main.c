@@ -24,7 +24,9 @@ queue_t *code_queue;
 
 void
 on_sirc_code(sirc_code_t code) {
-	queue_enqueue(code_queue, code);
+	if (!SIRC_GET_IS_REPEAT(code)) {
+		queue_enqueue(code_queue, code);
+	}
 }
 
 void

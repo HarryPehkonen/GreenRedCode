@@ -24,32 +24,40 @@ typedef struct token_specs_t {
 	token_t token;
 } token_specs_t;
 
-#define SIRC_TOKEN_START_MIN  (US_TO_TICKS(2400 - 100))
-#define SIRC_TOKEN_START_MAX  (US_TO_TICKS(2400 + 100))
-#define SIRC_TOKEN_LONG_MIN   (US_TO_TICKS(1200 - 100))
-#define SIRC_TOKEN_LONG_MAX   (US_TO_TICKS(1200 + 100))
+/*
+ * WARNING:  because of different granularity between microseconds and ticks,
+ * there is overlap between some microsecond values.  for example, 600us, at 8
+ * MHz, and with prescale of 64, takes 75 ticks.  76 ticks takes 608us.
+ * therefore 600us is exactly equal to 607us.  make sure there is enough
+ * difference between the MAX of one range and the MIN of the next range (i.e.
+ * TOKEN_START_MAX and TOKEN_SEPARATOR_MIN).
+ */
 #define SIRC_TOKEN_SHORT_MIN  (US_TO_TICKS(600 - 100))
-#define SIRC_TOKEN_SHORT_MAX  (US_TO_TICKS(600 + 100))
-#define SIRC_TOKEN_SEPARATOR_MIN  (US_TO_TICKS(2600))
+#define SIRC_TOKEN_SHORT_MAX  (US_TO_TICKS(600 + 120))
+#define SIRC_TOKEN_LONG_MIN   (US_TO_TICKS(1200 - 120))
+#define SIRC_TOKEN_LONG_MAX   (US_TO_TICKS(1200 + 120))
+#define SIRC_TOKEN_START_MIN  (US_TO_TICKS(2400 - 240))
+#define SIRC_TOKEN_START_MAX  (US_TO_TICKS(2400 + 240))
+#define SIRC_TOKEN_SEPARATOR_MIN  (US_TO_TICKS(2700))
 #define SIRC_TOKEN_SEPARATOR_MAX  (US_TO_TICKS(45000))
 
 token_specs_t token_specs[] = {
 	{
 		.min = SIRC_TOKEN_SHORT_MIN,
 		.max = SIRC_TOKEN_SHORT_MAX,
-		.token = SIRC_TOKEN_SHORT /* 62 - 87 */
+		.token = SIRC_TOKEN_SHORT
 	}, {
 		.min = SIRC_TOKEN_LONG_MIN,
 		.max = SIRC_TOKEN_LONG_MAX,
-		.token = SIRC_TOKEN_LONG /* 137 - 162 */
+		.token = SIRC_TOKEN_LONG
 	}, {
 		.min = SIRC_TOKEN_START_MIN,
 		.max = SIRC_TOKEN_START_MAX,
-		.token = SIRC_TOKEN_START /* 287 - 312 */
+		.token = SIRC_TOKEN_START
 	}, {
 		.min = SIRC_TOKEN_SEPARATOR_MIN,
 		.max = SIRC_TOKEN_SEPARATOR_MAX,
-		.token = SIRC_TOKEN_SEPARATOR /* 325 - 5625*/
+		.token = SIRC_TOKEN_SEPARATOR
 	}
 };
 
@@ -62,6 +70,7 @@ _sirc_tokenize(uint16_t delta_ticks) {
 			break;
 		}
 	}
+
 	return result;
 }
 
@@ -101,7 +110,7 @@ sirc_edge(uint16_t ticks) {
 			 * means the next code should not be considered a repeat, even if
 			 * it's the same one as before.
 			 */
-			 _prev_code = 0;
+			 //_prev_code = 0;
 		}
 	} else if (_state == SIRC_STATE_NEED_START_SHORT) {
 		if (token == SIRC_TOKEN_SHORT) {
@@ -134,27 +143,37 @@ sirc_edge(uint16_t ticks) {
 			_code_length += 1;
 		} else if (token == SIRC_TOKEN_SEPARATOR) {
 
-			if (_code != _prev_code) {
+			uint8_t is_repeat = (_prev_code == _code);
 
-				/* remember code *before* adding length to it */
-				_prev_code = _code;
+			/* remember code *before* adding length to it */
+			_prev_code = _code;
 
-				/* previous pulse matters */
-				_code_length += 1;
+			/* previous pulse matters */
+			_code_length += 1;
 
-				/* add code length to end */
-				/* see .h for meaning */
-				_code_length <<= SIRC_LENGTH_SHIFT_AMOUNT;
-				_code |= _code_length;
+			/* add code length to end */
+			/* see .h for meaning */
+			_code_length <<= SIRC_LENGTH_SHIFT_AMOUNT;
+			_code |= _code_length;
+			if (is_repeat) {
+				_code |= SIRC_IS_REPEAT_MASK;
+			}
 
-				_state = SIRC_STATE_NONE;
+			_state = SIRC_STATE_NONE;
 
-				/* callback */
+			/* callback */
+			if (on_code != NULL) {
 				on_code(_code);
 			}
 		} else {
 
-			/* bombed */
+			/*
+			 * suspect we just had a long pause (longer than a separator). that
+			 * means the next code should not be considered a repeat.  make
+			 * _prev_code look like something that can't possibly match the
+			 * next code.
+			 */
+			_prev_code = 0;
 			_state = SIRC_STATE_NONE;
 		}
 	}
@@ -182,25 +201,25 @@ void
 sirc_test() {
 
 	/* test _sirc_tokenize */
-	if(_sirc_tokenize(SIRC_TOKEN_START_MIN - 1) != SIRC_TOKEN_UNKNOWN) while(1);
+	if(_sirc_tokenize(SIRC_TOKEN_START_MIN - 1) == SIRC_TOKEN_START) while(1);
 	if(_sirc_tokenize(SIRC_TOKEN_START_MIN) != SIRC_TOKEN_START) while(1);
 	if(_sirc_tokenize(SIRC_TOKEN_START_MAX) != SIRC_TOKEN_START) while(1);
-	if(_sirc_tokenize(SIRC_TOKEN_START_MAX + 1) != SIRC_TOKEN_UNKNOWN) while(1);
+	if(_sirc_tokenize(SIRC_TOKEN_START_MAX + 1) == SIRC_TOKEN_START) while(1);
 
-	if(_sirc_tokenize(SIRC_TOKEN_LONG_MIN - 1) != SIRC_TOKEN_UNKNOWN) while(1);
+	if(_sirc_tokenize(SIRC_TOKEN_LONG_MIN - 1) == SIRC_TOKEN_LONG) while(1);
 	if(_sirc_tokenize(SIRC_TOKEN_LONG_MIN) != SIRC_TOKEN_LONG) while(1);
 	if(_sirc_tokenize(SIRC_TOKEN_LONG_MAX) != SIRC_TOKEN_LONG) while(1);
-	if(_sirc_tokenize(SIRC_TOKEN_LONG_MAX + 1) != SIRC_TOKEN_UNKNOWN) while(1);
+	if(_sirc_tokenize(SIRC_TOKEN_LONG_MAX + 1) == SIRC_TOKEN_LONG) while(1);
 
-	if(_sirc_tokenize(SIRC_TOKEN_SHORT_MIN - 1) != SIRC_TOKEN_UNKNOWN) while(1);
+	if(_sirc_tokenize(SIRC_TOKEN_SHORT_MIN - 1) == SIRC_TOKEN_SHORT) while(1);
 	if(_sirc_tokenize(SIRC_TOKEN_SHORT_MIN) != SIRC_TOKEN_SHORT) while(1);
 	if(_sirc_tokenize(SIRC_TOKEN_SHORT_MAX) != SIRC_TOKEN_SHORT) while(1);
-	if(_sirc_tokenize(SIRC_TOKEN_SHORT_MAX + 1) != SIRC_TOKEN_UNKNOWN) while(1);
+	if(_sirc_tokenize(SIRC_TOKEN_SHORT_MAX + 1) == SIRC_TOKEN_SHORT) while(1);
 
-	if(_sirc_tokenize(SIRC_TOKEN_SEPARATOR_MIN - 1) != SIRC_TOKEN_UNKNOWN) while(1);
+	if(_sirc_tokenize(SIRC_TOKEN_SEPARATOR_MIN - 1) == SIRC_TOKEN_SEPARATOR) while(1);
 	if(_sirc_tokenize(SIRC_TOKEN_SEPARATOR_MIN) != SIRC_TOKEN_SEPARATOR) while(1);
 	if(_sirc_tokenize(SIRC_TOKEN_SEPARATOR_MAX) != SIRC_TOKEN_SEPARATOR) while(1);
-	if(_sirc_tokenize(SIRC_TOKEN_SEPARATOR_MAX + 1) != SIRC_TOKEN_UNKNOWN) while(1);
+	if(_sirc_tokenize(SIRC_TOKEN_SEPARATOR_MAX + 1) == SIRC_TOKEN_SEPARATOR) while(1);
 
 	/* test sirc_edge */
 	sirc_set_on_code(_tokenizer_works);
@@ -255,6 +274,7 @@ sirc_test() {
 	ticks += SIRC_TOKEN_SHORT_MIN;
 	sirc_edge(ticks);
 
+
 	ticks += SIRC_TOKEN_SHORT_MIN;
 	sirc_edge(ticks);
 	ticks += SIRC_TOKEN_SHORT_MIN;
@@ -279,38 +299,37 @@ sirc_test() {
 
 	if (_tokenizer_worked == 0) while(1);
 
-	/* XXX:  fragile test -- requires 1/64 prescaler and 8MHz */
 	sirc_set_on_code(_poweroff_works);
 	_tokenizer_worked = 0;
 	ticks = 0;
 	sirc_edge(ticks);
 	uint16_t poweroff[] = {
-		307,
-		70,
-		156,
-		70,
-		80,
-		70,
-		156,
-		70,
-		81,
-		69,
-		156,
-		70,
-		81,
-		69,
-		81,
-		70,
-		156,
-		70,
-		80,
-		70,
-		81,
-		69,
-		87,
-		70,
-		81,
-		3237
+		US_TO_TICKS(2456),
+		US_TO_TICKS(560),
+		US_TO_TICKS(1248),
+		US_TO_TICKS(560),
+		US_TO_TICKS(640),
+		US_TO_TICKS(560),
+		US_TO_TICKS(1248),
+		US_TO_TICKS(560),
+		US_TO_TICKS(648),
+		US_TO_TICKS(552),
+		US_TO_TICKS(1248),
+		US_TO_TICKS(560),
+		US_TO_TICKS(648),
+		US_TO_TICKS(552),
+		US_TO_TICKS(648),
+		US_TO_TICKS(560),
+		US_TO_TICKS(1248),
+		US_TO_TICKS(560),
+		US_TO_TICKS(640),
+		US_TO_TICKS(560),
+		US_TO_TICKS(648),
+		US_TO_TICKS(552),
+		US_TO_TICKS(696),
+		US_TO_TICKS(560),
+		US_TO_TICKS(648),
+		US_TO_TICKS(25896)
 	};
 	for(uint8_t n = 0; n < (sizeof(poweroff) / sizeof(poweroff[0])); n += 1) {
 		ticks += poweroff[n];

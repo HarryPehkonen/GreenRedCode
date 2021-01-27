@@ -45,6 +45,7 @@
 void
 pins_init() {
 
+	/* output */
 	DDR_RED_BACK |= (1<<BIT_RED_BACK);
 	DDR_RED1 |= (1<<BIT_RED1);
 	DDR_RED2 |= (1<<BIT_RED2);
@@ -53,6 +54,7 @@ pins_init() {
 	DDR_GREEN1 |= (1<<BIT_GREEN1);
 	DDR_GREEN2 |= (1<<BIT_GREEN2);
 
+	/* input */
 	DDR_BTN |= (0<<BIT_BTN); /* no effect */
 	PORT_BTN |= (1<<BIT_BTN); /* pull-up */
 
@@ -150,4 +152,3 @@ void
 pins_green2_toggle() {
 	PIN_GREEN2 = (1<<BIT_GREEN2);
 }
-
