@@ -28,5 +28,6 @@ void pins_green1_toggle();
 void pins_green2_on();
 void pins_green2_off();
 void pins_green2_toggle();
+uint8_t pins_button_is_pressed();
 
 #endif /* PINS_H_ */

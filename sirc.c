@@ -41,6 +41,7 @@ typedef struct token_specs_t {
 #define SIRC_TOKEN_SEPARATOR_MIN  (US_TO_TICKS(2700))
 #define SIRC_TOKEN_SEPARATOR_MAX  (US_TO_TICKS(45000))
 
+/* table for analyzing a pulse based on its length */
 token_specs_t token_specs[] = {
 	{
 		.min = SIRC_TOKEN_SHORT_MIN,
@@ -74,20 +75,7 @@ _sirc_tokenize(uint16_t delta_ticks) {
 	return result;
 }
 
-typedef enum state_t {
-	SIRC_STATE_NONE = 0,
-	SIRC_STATE_NEED_START_SHORT = 1,
-	SIRC_STATE_HAVE_START = 2,
-	SIRC_STATE_NEED_SHORT = 3
-} state_t;
-
-/* must be the same type */
-sirc_code_t _code = 0;
-sirc_code_t _mask = 0;
-sirc_code_t _prev_code = 0;
-sirc_code_t _code_length = 0;
-
-static state_t _state = SIRC_STATE_NONE;
+/* callback */
 void (*on_code)(sirc_code_t);
 
 void
@@ -95,6 +83,26 @@ sirc_set_on_code(void (*fn)(sirc_code_t)) {
 	on_code = fn;
 }
 
+/* must be the same type */
+sirc_code_t _code = 0;
+sirc_code_t _mask = 0;
+sirc_code_t _prev_code = 0;
+sirc_code_t _code_length = 0;
+
+/* state machine */
+typedef enum state_t {
+	SIRC_STATE_NONE = 0,
+	SIRC_STATE_NEED_START_SHORT = 1,
+	SIRC_STATE_HAVE_START = 2,
+	SIRC_STATE_NEED_SHORT = 3
+} state_t;
+
+static state_t _state = SIRC_STATE_NONE;
+
+/*
+ * whenever a pulse starts or ends, advise sirc_edge how long the pulse or
+ * space was (in ticks).
+ */
 void
 sirc_edge(uint16_t ticks) {
 	static uint16_t prev_ticks = 0;
@@ -105,6 +113,7 @@ sirc_edge(uint16_t ticks) {
 			_state = SIRC_STATE_NEED_START_SHORT;
 		} else if (token == SIRC_TOKEN_UNKNOWN) {
 
+			/* XXX:  get rid of this? */
 			/*
 			 * suspect we received a very long pause in between pulses. that
 			 * means the next code should not be considered a repeat, even if
@@ -181,6 +190,7 @@ sirc_edge(uint16_t ticks) {
 	prev_ticks = ticks;
 }
 
+/* only tests follow */
 #ifdef DEBUG
 static uint8_t _tokenizer_worked = 0;
 void
@@ -226,7 +236,7 @@ sirc_test() {
 
 	uint16_t ticks = 0;
 
-	sirc_edge(ticks);
+	//sirc_edge(ticks);
 	ticks += SIRC_TOKEN_START_MIN;
 	sirc_edge(ticks);
 	ticks += SIRC_TOKEN_SHORT_MIN;
@@ -301,8 +311,8 @@ sirc_test() {
 
 	sirc_set_on_code(_poweroff_works);
 	_tokenizer_worked = 0;
-	ticks = 0;
-	sirc_edge(ticks);
+	//ticks = 0;
+	//sirc_edge(ticks);
 	uint16_t poweroff[] = {
 		US_TO_TICKS(2456),
 		US_TO_TICKS(560),

@@ -3,16 +3,17 @@
  *
  * Created: 2021-01-15 09:34:35
  * Author : harry
- */ 
+ */
 
+#include "freq.h"
 
 #include <stddef.h> /* NULL */
 #include <avr/cpufunc.h> /* _NOP() */
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/eeprom.h>
+#include <util/delay.h> /* debounce */
 
-#include "freq.h"
 #include "counter0.h"
 #include "counter1.h"
 #include "pins.h"
@@ -21,6 +22,7 @@
 #include "queue.h"
 
 queue_t *code_queue;
+uint8_t  button_was_pressed;
 
 void
 on_sirc_code(sirc_code_t code) {
@@ -59,6 +61,7 @@ int main(void)
 #endif
 
 	code_queue = queue_create();
+	button_was_pressed = 0;
 
 	pins_init();
 	counter0_init();
@@ -72,6 +75,38 @@ int main(void)
 	sei();
 
 	while(1) {
+		if (button_was_pressed) {
+
+			_delay_ms(250); /* debounce */
+
+			if (mode_is(MODE_RECORD_GREEN)) {
+
+				/* cancel recording of green code */
+				mode_to(MODE_GREEN);
+			} else if (mode_is(MODE_RECORD_RED)) {
+
+				/* cancel recording of red code */
+				mode_to(MODE_RED);
+			} else  if (mode_is(MODE_GREEN)) {
+
+				/*
+				 * start recording green code.  once it's recorded,
+				 * automatically switch to recording red code.
+				 */
+				mode_to(MODE_RECORD_GREEN);
+			} else if (mode_is(MODE_RED)) {
+
+				/*
+				 * go straight to recording red code.  once it's recorded, get
+				 * out of recording mode.
+				 */
+				 mode_to(MODE_RECORD_RED);
+			}
+
+			button_was_pressed = 0;
+		}
+
+		/* deal with any IR codes that were received */
 		if (!queue_is_empty(code_queue)) {
 			if (mode_is(MODE_GREEN) || mode_is(MODE_RED)) {
 				uint32_t code = queue_dequeue(code_queue);
@@ -129,5 +164,11 @@ ISR(TIMER1_CAPT_vect) {
 
 /* button press */
 ISR(PCINT2_vect) {
-	mode_to(MODE_RECORD_GREEN);
+
+	/* only when button is pressed, not when it's released */
+	if (!pins_button_is_pressed()) {
+		return;
+	}
+
+	button_was_pressed = 1;
 }

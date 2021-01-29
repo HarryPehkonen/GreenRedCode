@@ -152,3 +152,8 @@ void
 pins_green2_toggle() {
 	PIN_GREEN2 = (1<<BIT_GREEN2);
 }
+
+uint8_t
+pins_button_is_pressed() {
+	return PIN_BTN | BIT_BTN;
+}
