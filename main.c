@@ -139,6 +139,9 @@ int main(void)
 					   ignore any events in order to flush out
 					   any remaining IR codes
 					 */
+
+					/* XXX: maybe don't need this */
+
 					mode_pause(20);
 					break;
 				}
