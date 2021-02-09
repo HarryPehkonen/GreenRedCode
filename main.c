@@ -22,7 +22,8 @@
 #include "queue.h"
 
 queue_t *code_queue;
-uint8_t  button_was_pressed;
+volatile uint8_t  button_was_pressed = 0;
+volatile uint8_t  ticks_have_occurred = 0;
 
 void
 on_sirc_code(sirc_code_t code) {
@@ -53,6 +54,139 @@ read_red_code() {
 	return eeprom_read_dword((uint32_t *)RED_EEPROM_ADDR);
 }
 
+void
+on_button_short_press() {
+
+	if (mode_is(MODE_OFF)) {
+		return;
+	}
+
+	if (mode_is(MODE_RECORD_GREEN)) {
+
+		/* cancel recording of green code */
+		mode_to(MODE_GREEN);
+	} else if (mode_is(MODE_RECORD_RED)) {
+
+		/* cancel recording of red code */
+		mode_to(MODE_RED);
+	} else  if (mode_is(MODE_GREEN)) {
+
+		/*
+		 * start recording green code.  once it's recorded,
+		 * automatically switch to recording red code.
+		 */
+		mode_to(MODE_RECORD_GREEN);
+	} else if (mode_is(MODE_RED)) {
+
+		/*
+		 * go straight to recording red code.  once it's recorded, get
+		 * out of recording mode.
+		 */
+		 mode_to(MODE_RECORD_RED);
+	}
+}
+
+void
+on_button_long_press() {
+	if (mode_is(MODE_OFF)) {
+		mode_to(MODE_GREEN);
+	} else {
+		mode_to(MODE_OFF);
+	}
+}
+
+void
+run_sync() {
+	static uint8_t prescale2 = 0;
+	static uint8_t prescale3 = 0;
+
+	if (pins_button_is_pressed()) {
+		button_was_pressed += 1;
+	} else {
+
+		/* button is no longer pressed */
+		if ((button_was_pressed >= 2) && (button_was_pressed < 50)) {
+			on_button_short_press();
+		} else if (button_was_pressed >= 51) {
+			on_button_long_press();
+		}
+		button_was_pressed = 0;
+	}
+
+	if (prescale2 == 0) {
+		prescale2 = 0x06;
+
+		if (mode_is(MODE_GREEN)) {
+			pins_green1_toggle();
+			pins_green2_toggle();
+			pins_green_back_toggle();
+		} else if (mode_is(MODE_RED)) {
+			pins_red1_toggle();
+			pins_red2_toggle();
+			pins_red_back_toggle();
+		}
+	}
+
+	if (prescale3 == 0) {
+		prescale3 = 0x03;
+
+		if (mode_is(MODE_RECORD_GREEN)) {
+			pins_green_back_toggle();
+		} else if (mode_is(MODE_RECORD_RED)) {
+			pins_red_back_toggle();
+		}
+	}
+
+	prescale2 -= 1;
+	prescale3 -= 1;
+}
+
+void
+run_async() {
+
+	/* deal with any IR codes that were received */
+	if (!queue_is_empty(code_queue)) {
+		if (mode_is(MODE_GREEN) || mode_is(MODE_RED)) {
+			uint32_t code = queue_dequeue(code_queue);
+			if (code == read_green_code()) {
+				mode_to(MODE_GREEN);
+			} else if (code == read_red_code()) {
+				mode_to(MODE_RED);
+			}
+		} else if (mode_is(MODE_RECORD_GREEN)) {
+			sirc_code_t code = queue_dequeue(code_queue);
+			write_green_code(code);
+			mode_to(MODE_RECORD_RED);
+		} else if (mode_is(MODE_RECORD_RED)) {
+
+			/* make sure we don't just read a repeated green code */
+			sirc_code_t green = read_green_code();
+			while (1) {
+
+				/* wait until there is something in the queue */
+				while (queue_is_empty(code_queue));
+
+				uint32_t code = queue_dequeue(code_queue);
+				if (code == green) {
+					continue;
+				}
+				write_red_code(code);
+				mode_to(MODE_GREEN);
+
+				/*
+				   ignore any events in order to flush out
+				   any remaining IR codes
+				 */
+
+				/* XXX: maybe don't need this */
+
+				//mode_pause(20);
+				break;
+			}
+		}
+	}
+}
+
 int main(void)
 {
 #ifdef DEBUG
@@ -75,84 +209,17 @@ int main(void)
 	sei();
 
 	while(1) {
-		if (button_was_pressed) {
-
-			_delay_ms(250); /* debounce */
-
-			if (mode_is(MODE_RECORD_GREEN)) {
-
-				/* cancel recording of green code */
-				mode_to(MODE_GREEN);
-			} else if (mode_is(MODE_RECORD_RED)) {
-
-				/* cancel recording of red code */
-				mode_to(MODE_RED);
-			} else  if (mode_is(MODE_GREEN)) {
-
-				/*
-				 * start recording green code.  once it's recorded,
-				 * automatically switch to recording red code.
-				 */
-				mode_to(MODE_RECORD_GREEN);
-			} else if (mode_is(MODE_RED)) {
-
-				/*
-				 * go straight to recording red code.  once it's recorded, get
-				 * out of recording mode.
-				 */
-				 mode_to(MODE_RECORD_RED);
-			}
-
-			button_was_pressed = 0;
-		}
-
-		/* deal with any IR codes that were received */
-		if (!queue_is_empty(code_queue)) {
-			if (mode_is(MODE_GREEN) || mode_is(MODE_RED)) {
-				uint32_t code = queue_dequeue(code_queue);
-				if (code == read_green_code()) {
-					mode_to(MODE_GREEN);
-				} else if (code == read_red_code()) {
-					mode_to(MODE_RED);
-				}
-			} else if (mode_is(MODE_RECORD_GREEN)) {
-				sirc_code_t code = queue_dequeue(code_queue);
-				write_green_code(code);
-				mode_to(MODE_RECORD_RED);
-			} else if (mode_is(MODE_RECORD_RED)) {
-
-				/* make sure we don't just read a repeated green code */
-				sirc_code_t green = read_green_code();
-				while (1) {
-
-					/* wait until there is something in the queue */
-					while (queue_is_empty(code_queue));
-
-					uint32_t code = queue_dequeue(code_queue);
-					if (code == green) {
-						continue;
-					}
-					write_red_code(code);
-					mode_to(MODE_GREEN);
-
-					/*
-					   ignore any events in order to flush out
-					   any remaining IR codes
-					 */
-
-					/* XXX: maybe don't need this */
-
-					mode_pause(20);
-					break;
-				}
-			}
+		run_async();
+		if (ticks_have_occurred) {
+			run_sync();
+			ticks_have_occurred -= 1;
 		}
 	}
 }
 
 /* heart-beat */
 ISR(TIMER0_COMPA_vect) {
-	mode_tick();
+	ticks_have_occurred += 1;
 }
 
 /* for IR */
@@ -168,8 +235,10 @@ ISR(TIMER1_CAPT_vect) {
 /* button press */
 ISR(PCINT2_vect) {
 
+return;
 	/* only when button is pressed, not when it's released */
 	if (!pins_button_is_pressed()) {
+		button_was_pressed = 0;
 		return;
 	}
 

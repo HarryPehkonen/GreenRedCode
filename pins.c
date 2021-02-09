@@ -155,5 +155,7 @@ pins_green2_toggle() {
 
 uint8_t
 pins_button_is_pressed() {
-	return PIN_BTN | BIT_BTN;
+
+	/* button supplies ground.  has pull-up resistor */
+	return !(PIN_BTN & (1<<BIT_BTN));
 }
