@@ -42,6 +42,11 @@
 #define PIN_BTN PIND
 #define BIT_BTN 6
 
+#define DDR_IRVCC DDRC
+#define PORT_IRVCC PORTC
+#define PIN_IRVCC PINC
+#define BIT_IRVCC 0
+
 void
 pins_init() {
 
@@ -49,10 +54,14 @@ pins_init() {
 	DDR_RED_BACK |= (1<<BIT_RED_BACK);
 	DDR_RED1 |= (1<<BIT_RED1);
 	DDR_RED2 |= (1<<BIT_RED2);
-
+	DDR_IRVCC |= (1<<BIT_IRVCC);
 	DDR_GREEN_BACK |= (1<<BIT_GREEN_BACK);
 	DDR_GREEN1 |= (1<<BIT_GREEN1);
 	DDR_GREEN2 |= (1<<BIT_GREEN2);
+	DDR_IRVCC |= (1<<BIT_IRVCC);
+
+	/* supply power to IR */
+	PORT_IRVCC |= (1<<BIT_IRVCC);
 
 	/* input */
 	DDR_BTN |= (0<<BIT_BTN); /* no effect */
@@ -61,6 +70,21 @@ pins_init() {
 	/* interrupt on pin change on push-button */
 	PCICR |= (1<<PCIE2);
 	PCMSK2 |= (1<<BIT_BTN);
+}
+
+void
+pins_off() {
+	DDRB = 0;
+	DDRC = 0;
+	DDRD = 0;
+
+	/* all pull-ups off */
+	PORTB = 0;
+	PORTC = 0;
+	PORTD = 0;
+
+	/* button stays active as an input with active pull-up */
+	PORT_BTN |= (1<<BIT_BTN);
 }
 
 void
@@ -151,6 +175,21 @@ pins_green2_off() {
 void
 pins_green2_toggle() {
 	PIN_GREEN2 = (1<<BIT_GREEN2);
+}
+
+void
+pins_irvcc_on() {
+	PORT_IRVCC |= (1<<BIT_IRVCC);
+}
+
+void
+pins_irvcc_off() {
+	PORT_IRVCC &= ~(1<<BIT_IRVCC);
+}
+
+void
+pins_irvcc_toggle() {
+	PIN_IRVCC = (1<<BIT_IRVCC);
 }
 
 uint8_t

@@ -15,6 +15,7 @@ counter0_init() {
 	TCCR0A |= (2<<WGM00);
 
 	/* prescaler */
+	/* 5:  1/1024 */
 	TCCR0B |= (5<<CS00);
 
 	/* enable interrupt */

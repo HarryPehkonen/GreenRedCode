@@ -20,41 +20,27 @@ mode_pause(uint8_t ticks) {
 void
 mode_to(mode_t new_mode) {
 
-	if (new_mode == MODE_RED) {
-		pins_green1_off();
-		pins_green2_off();
-		pins_red2_off();
-		pins_green_back_off();
-		pins_red1_on();
-	} else if (new_mode == MODE_GREEN) {
-		pins_red1_off();
-		pins_red2_off();
-		pins_green2_off();
-		pins_red_back_off();
-		pins_green1_on();
-	} else if (new_mode == MODE_RECORD_GREEN) {
-		pins_red1_off();
-		pins_red2_off();
-		pins_green1_off();
-		pins_green2_off();
-		pins_red_back_off();
-		pins_green_back_on();
-	} else if (new_mode == MODE_RECORD_RED) {
-		pins_red1_off();
-		pins_red2_off();
-		pins_green1_off();
-		pins_green2_off();
-		pins_red_back_on();
-		pins_green_back_off();
-	} else if (new_mode == MODE_OFF) {
-		pins_green1_off();
-		pins_green2_off();
-		pins_green_back_off();
-		pins_red1_off();
-		pins_red2_off();
-		pins_red_back_off();
-	}
 	_mode = new_mode;
+
+	pins_green1_off();
+	pins_green2_off();
+	pins_green_back_off();
+	pins_red1_off();
+	pins_red2_off();
+	pins_red_back_off();
+
+	if (_mode == MODE_OFF) {
+		pins_irvcc_off();
+	} else {
+		pins_irvcc_on();
+	}
+
+	/* some modes require pins to be out of phase */
+	if (new_mode == MODE_GREEN) {
+		pins_green1_on();
+	} else if (new_mode == MODE_RED) {
+		pins_red1_on();
+	}
 }
 
 uint8_t

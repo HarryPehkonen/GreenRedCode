@@ -13,6 +13,8 @@
 #include <avr/interrupt.h>
 #include <avr/eeprom.h>
 #include <util/delay.h> /* debounce */
+#include <avr/sleep.h>
+#include <avr/wdt.h>
 
 #include "counter0.h"
 #include "counter1.h"
@@ -22,8 +24,42 @@
 #include "queue.h"
 
 queue_t *code_queue;
-volatile uint8_t  button_was_pressed = 0;
 volatile uint8_t  ticks_have_occurred = 0;
+
+void
+wdt_init() {
+	wdt_enable(WDTO_250MS);
+}
+
+void
+runtime_power() {
+	PRR = PRR
+			| (1<<PRTWI)
+			/* | (1<<PRTIM0) */
+			/* | (1<<PRTIM1) */
+			| (1<<PRTIM2)
+			| (1<<PRSPI)
+			| (1<<PRUSART0)
+			| (1<<PRADC);
+}
+
+void
+off_power() {
+
+	wdt_disable();
+	pins_off();
+
+	/* sleep mode requires pin-change interrupt on button */
+	/* sleep mode:  power-down */
+	SMCR |= (2<<SM0);
+	sleep_enable();
+	sleep_bod_disable();
+	sleep_cpu();
+	sleep_disable();
+
+	pins_init();
+	wdt_init();
+}
 
 void
 on_sirc_code(sirc_code_t code) {
@@ -58,6 +94,15 @@ void
 on_button_short_press() {
 
 	if (mode_is(MODE_OFF)) {
+		mode_to(MODE_GREEN);
+	} else {
+		mode_to(MODE_OFF);
+	}
+}
+
+void
+on_button_long_press() {
+	if (mode_is(MODE_OFF)) {
 		return;
 	}
 
@@ -87,18 +132,10 @@ on_button_short_press() {
 }
 
 void
-on_button_long_press() {
-	if (mode_is(MODE_OFF)) {
-		mode_to(MODE_GREEN);
-	} else {
-		mode_to(MODE_OFF);
-	}
-}
-
-void
 run_sync() {
 	static uint8_t prescale2 = 0;
 	static uint8_t prescale3 = 0;
+	static uint8_t button_was_pressed = 0;
 
 	if (pins_button_is_pressed()) {
 		button_was_pressed += 1;
@@ -159,31 +196,20 @@ run_async() {
 			mode_to(MODE_RECORD_RED);
 		} else if (mode_is(MODE_RECORD_RED)) {
 
+			uint32_t new_code = queue_dequeue(code_queue);
+
 			/* make sure we don't just read a repeated green code */
 			sirc_code_t green = read_green_code();
-			while (1) {
-
-				/* wait until there is something in the queue */
-				while (queue_is_empty(code_queue));
-
-				uint32_t code = queue_dequeue(code_queue);
-				if (code == green) {
-					continue;
-				}
-				write_red_code(code);
+			if (new_code != green) {
+				write_red_code(new_code);
 				mode_to(MODE_GREEN);
-
-				/*
-				   ignore any events in order to flush out
-				   any remaining IR codes
-				 */
-
-				/* XXX: maybe don't need this */
-
-				//mode_pause(20);
-				break;
 			}
+			/* else remain in MODE_RECORD_RED */
 		}
+	}
+
+	if (mode_is(MODE_OFF)) {
+		off_power();
 	}
 }
 
@@ -195,24 +221,23 @@ int main(void)
 #endif
 
 	code_queue = queue_create();
-	button_was_pressed = 0;
 
 	pins_init();
 	counter0_init();
 	counter0_set_ocra(0xff);
-
 	counter1_init();
-
+	runtime_power();
 	mode_to(MODE_GREEN);
-
 	sirc_set_on_code(on_sirc_code);
+	wdt_init();
 	sei();
 
 	while(1) {
 		run_async();
 		if (ticks_have_occurred) {
-			run_sync();
 			ticks_have_occurred -= 1;
+			run_sync();
+			wdt_reset();
 		}
 	}
 }
@@ -234,13 +259,14 @@ ISR(TIMER1_CAPT_vect) {
 
 /* button press */
 ISR(PCINT2_vect) {
+	if (mode_is(MODE_OFF)) {
+		if (pins_button_is_pressed()) {
 
-return;
-	/* only when button is pressed, not when it's released */
-	if (!pins_button_is_pressed()) {
-		button_was_pressed = 0;
-		return;
+			/* wait for button to be released */
+			while(pins_button_is_pressed());
+
+			mode_to(MODE_GREEN);
+		}
 	}
-
-	button_was_pressed = 1;
+	return;
 }
